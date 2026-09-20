@@ -4,7 +4,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { catchError, throwError } from 'rxjs';
 
 interface ErrorEnvelope {
-  error?: {code?: string; message?: string};
+  error?: {code?: string; message?: string; details?: unknown};
   request_id?: string;
 }
 

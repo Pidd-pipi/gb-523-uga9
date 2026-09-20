@@ -31,3 +31,18 @@ func (r Rack) IsUsable() bool {
 func (r Rack) Coordinate() string {
 	return r.RackCode
 }
+
+// RackPlacement records the current operational layout: a load physically hosted by a
+// rack. Unlike a LayoutScenario proposal it is the live baseline maintenance moves off.
+type RackPlacement struct {
+	ID        uint          `gorm:"primaryKey" json:"id"`
+	RackID    uint          `gorm:"not null;index;uniqueIndex:idx_rack_load" json:"rack_id"`
+	LoadID    uint          `gorm:"not null;index;uniqueIndex:idx_rack_load" json:"load_id"`
+	Source    string        `gorm:"size:32;not null;default:'seed'" json:"source"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	Rack      Rack          `gorm:"foreignKey:RackID" json:"rack,omitempty"`
+	Load      EquipmentLoad `gorm:"foreignKey:LoadID" json:"load,omitempty"`
+}
+
+func (RackPlacement) TableName() string { return "rack_placements" }

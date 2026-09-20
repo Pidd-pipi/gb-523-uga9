@@ -50,6 +50,7 @@ func migrate(db *gorm.DB) error {
 		&model.ThermalZone{},
 		&model.Rack{},
 		&model.EquipmentLoad{},
+		&model.RackPlacement{},
 		&model.LayoutScenario{},
 		&audit.Event{},
 	)
@@ -82,8 +83,8 @@ func seed(db *gorm.DB) error {
 		return fmt.Errorf("seed thermal zones: %w", err)
 	}
 	racks := []model.Rack{
-		{ZoneID: zones[0].ID, RackCode: "A-01", RowIndex: 1, ColumnIndex: 1, PowerLimitKW: 24, AirflowLimitCFM: 6800, RackUnits: 42, RackStatus: constants.RackAvailable, Version: 1},
-		{ZoneID: zones[0].ID, RackCode: "A-02", RowIndex: 1, ColumnIndex: 2, PowerLimitKW: 24, AirflowLimitCFM: 6800, RackUnits: 42, RackStatus: constants.RackAvailable, Version: 1},
+		{ZoneID: zones[0].ID, RackCode: "A-01", RowIndex: 1, ColumnIndex: 1, PowerLimitKW: 30, AirflowLimitCFM: 7200, RackUnits: 42, RackStatus: constants.RackAvailable, Version: 1},
+		{ZoneID: zones[0].ID, RackCode: "A-02", RowIndex: 1, ColumnIndex: 2, PowerLimitKW: 30, AirflowLimitCFM: 7200, RackUnits: 42, RackStatus: constants.RackAvailable, Version: 1},
 		{ZoneID: zones[1].ID, RackCode: "B-01", RowIndex: 2, ColumnIndex: 1, PowerLimitKW: 32, AirflowLimitCFM: 9200, RackUnits: 48, RackStatus: constants.RackAvailable, Version: 1},
 		{ZoneID: zones[1].ID, RackCode: "B-02", RowIndex: 2, ColumnIndex: 2, PowerLimitKW: 32, AirflowLimitCFM: 9200, RackUnits: 48, RackStatus: constants.RackReserved, Version: 1},
 		{ZoneID: zones[2].ID, RackCode: "C-01", RowIndex: 3, ColumnIndex: 1, PowerLimitKW: 18, AirflowLimitCFM: 5400, RackUnits: 42, RackStatus: constants.RackMaintenance, Version: 1},
@@ -96,11 +97,24 @@ func seed(db *gorm.DB) error {
 		{Name: "AI training node 02", PowerKW: 18.1, HeatKW: 17.5, AirflowCFM: 5100, RackUnits: 8, RedundancyGroup: "AI-A", PreferredZoneID: &zones[0].ID, LoadStatus: "ready"},
 		{Name: "Storage fabric", PowerKW: 9.6, HeatKW: 8.9, AirflowCFM: 2800, RackUnits: 12, RedundancyGroup: "STORAGE-B", PreferredZoneID: &zones[2].ID, LoadStatus: "ready"},
 		{Name: "Telemetry cluster", PowerKW: 6.2, HeatKW: 5.8, AirflowCFM: 1900, RackUnits: 6, RedundancyGroup: "OPS-C", PreferredZoneID: &zones[0].ID, LoadStatus: "ready"},
+		{Name: "Archive backup shelf", PowerKW: 15.2, HeatKW: 14.1, AirflowCFM: 4600, RackUnits: 14, RedundancyGroup: "STORAGE-B", PreferredZoneID: &zones[1].ID, LoadStatus: "ready"},
 	}
 	if err := db.Create(&loads).Error; err != nil {
 		return fmt.Errorf("seed equipment loads: %w", err)
 	}
-	slog.Info("database seed completed", "zones", len(zones), "racks", len(racks), "loads", len(loads))
+	// Current, operational layout: the live baseline rack maintenance migrates away from.
+	// Maintaining A-01 relocates its node to the empty A-02 (success). Maintaining B-02
+	// has nowhere in TZ-B to go because B-01 already hosts the archive shelf (rejection).
+	placements := []model.RackPlacement{
+		{RackID: racks[0].ID, LoadID: loads[1].ID, Source: "seed"}, // A-01 <- AI node 02
+		{RackID: racks[1].ID, LoadID: loads[3].ID, Source: "seed"}, // A-02 <- telemetry cluster
+		{RackID: racks[2].ID, LoadID: loads[4].ID, Source: "seed"}, // B-01 <- archive backup shelf
+		{RackID: racks[3].ID, LoadID: loads[0].ID, Source: "seed"}, // B-02 <- AI node 01
+	}
+	if err := db.Create(&placements).Error; err != nil {
+		return fmt.Errorf("seed rack placements: %w", err)
+	}
+	slog.Info("database seed completed", "zones", len(zones), "racks", len(racks), "loads", len(loads), "placements", len(placements))
 	return nil
 }
 

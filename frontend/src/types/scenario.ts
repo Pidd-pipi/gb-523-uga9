@@ -1,3 +1,5 @@
+import { MaintenanceSnapshot } from './maintenance';
+
 export type ScenarioStatus = 'draft' | 'evaluating' | 'pending_review' | 'approved' | 'archived';
 
 export interface ConstraintViolation {
@@ -50,6 +52,7 @@ export interface LayoutScenario {
   created_by: number;
   approved_by: number | null;
   has_critical_violation: boolean;
+  maintenance?: MaintenanceSnapshot;
 }
 
 export interface ScenarioComparison {

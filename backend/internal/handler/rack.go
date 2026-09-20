@@ -66,3 +66,29 @@ func (h *RackHandler) Update(c *gin.Context) {
 	}
 	web.OK(c, item)
 }
+
+func (h *RackHandler) ListPlacements(c *gin.Context) {
+	items, err := h.service.ListPlacements(c.Request.Context())
+	if err != nil {
+		web.Fail(c, err)
+		return
+	}
+	web.OK(c, gin.H{"items": items, "total": len(items)})
+}
+
+func (h *RackHandler) StartMaintenance(c *gin.Context) {
+	id, ok := web.ParamID(c)
+	if !ok {
+		return
+	}
+	var req dto.StartMaintenanceRequest // body is optional (no reason/version required)
+	if c.Request.ContentLength > 0 && !web.BindJSON(c, &req) {
+		return
+	}
+	result, err := h.service.StartMaintenance(c.Request.Context(), id, req, auditFrom(c))
+	if err != nil {
+		web.Fail(c, err)
+		return
+	}
+	web.OK(c, result)
+}

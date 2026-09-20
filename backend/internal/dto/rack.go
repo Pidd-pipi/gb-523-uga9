@@ -91,3 +91,76 @@ func NewRack(req CreateRackRequest) (model.Rack, error) {
 		Version:         1,
 	}, nil
 }
+
+type StartMaintenanceRequest struct {
+	Version uint   `json:"version"`
+	Reason  string `json:"reason" binding:"max=500"`
+}
+type PlacementResponse struct {
+	ID         uint    `json:"id"`
+	RackID     uint    `json:"rack_id"`
+	RackCode   string  `json:"rack_code"`
+	ZoneID     uint    `json:"zone_id"`
+	ZoneCode   string  `json:"zone_code"`
+	LoadID     uint    `json:"load_id"`
+	LoadName   string  `json:"load_name"`
+	PowerKW    float64 `json:"power_kw"`
+	HeatKW     float64 `json:"heat_kw"`
+	AirflowCFM float64 `json:"airflow_cfm"`
+	RackUnits  int     `json:"rack_units"`
+	Source     string  `json:"source"`
+}
+type RackPlacementView struct {
+	LoadID     uint    `json:"load_id"`
+	LoadName   string  `json:"load_name"`
+	RackID     uint    `json:"rack_id"`
+	RackCode   string  `json:"rack_code"`
+	ZoneID     uint    `json:"zone_id"`
+	ZoneCode   string  `json:"zone_code"`
+	PowerKW    float64 `json:"power_kw"`
+	AirflowCFM float64 `json:"airflow_cfm"`
+	RackUnits  int     `json:"rack_units"`
+}
+
+// MaintenanceSnapshot freezes a successful migration before/after into the draft scenario.
+type MaintenanceSnapshot struct {
+	Kind                string              `json:"kind"`
+	AlgorithmVersion    string              `json:"algorithm_version"`
+	MaintenanceRackID   uint                `json:"maintenance_rack_id"`
+	MaintenanceRackCode string              `json:"maintenance_rack_code"`
+	ZoneID              uint                `json:"zone_id"`
+	ZoneCode            string              `json:"zone_code"`
+	Reason              string              `json:"reason"`
+	Before              []RackPlacementView `json:"before"`
+	After               []RackPlacementView `json:"after"`
+	Moves               []MaintenanceMove   `json:"moves"`
+}
+type MaintenanceMove struct {
+	LoadID       uint    `json:"load_id"`
+	LoadName     string  `json:"load_name"`
+	FromRackID   uint    `json:"from_rack_id"`
+	FromRackCode string  `json:"from_rack_code"`
+	ToRackID     uint    `json:"to_rack_id"`
+	ToRackCode   string  `json:"to_rack_code"`
+	ZoneID       uint    `json:"zone_id"`
+	ZoneCode     string  `json:"zone_code"`
+	PowerKW      float64 `json:"power_kw"`
+	HeatKW       float64 `json:"heat_kw"`
+	AirflowCFM   float64 `json:"airflow_cfm"`
+	RackUnits    int     `json:"rack_units"`
+}
+
+// RackMaintenanceResponse is the successful start payload; 422 reuse planner evidence.
+type RackMaintenanceResponse struct {
+	RackID      uint                `json:"rack_id"`
+	RackCode    string              `json:"rack_code"`
+	ZoneID      uint                `json:"zone_id"`
+	ZoneCode    string              `json:"zone_code"`
+	RackStatus  string              `json:"rack_status"`
+	RackVersion uint                `json:"rack_version"`
+	MovedLoads  int                 `json:"moved_loads"`
+	Moves       []MaintenanceMove   `json:"moves"`
+	Before      []RackPlacementView `json:"before"`
+	After       []RackPlacementView `json:"after"`
+	Scenario    ScenarioResponse    `json:"scenario"`
+}

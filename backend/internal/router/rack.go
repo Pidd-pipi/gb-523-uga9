@@ -8,7 +8,9 @@ import (
 func RegisterRackRoutes(api *gin.RouterGroup, h *handler.RackHandler, write gin.HandlerFunc) {
 	racks := api.Group("/racks")
 	racks.GET("", h.List)
+	racks.GET("/placements/current", h.ListPlacements)
 	racks.GET("/:id", h.Get)
 	racks.POST("", write, h.Create)
 	racks.PUT("/:id", write, h.Update)
+	racks.POST("/:id/maintenance", write, h.StartMaintenance)
 }

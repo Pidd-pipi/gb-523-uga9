@@ -41,6 +41,17 @@ docker compose down -v --remove-orphans
 
 布局算法先按负载对可用机柜的约束紧度排序，再按容量余量、邻接热惩罚、热点惩罚、保留机柜惩罚和偏好奖励评分；评分相同时按机柜编码排序。相同输入快照与算法版本会得到相同结果。无法放置的负载会返回 `LOAD_UNPLACED` 及候选约束证据，不会静默忽略。
 
+## 机柜维护迁移闭环
+
+规划员在 `/planner` 页只能为 `available` 或 `reserved` 机柜发起维护（`unavailable`、`maintenance` 直接拒绝）。系统读取该机柜在当前布局（`rack_placements`）中承载的待规划负载，将它们一并迁移到**同一热区**内仍可承载（可用/预留）的机柜，迁移算法 `rack-maintenance-v1` 确定性地按负载 ID、机柜编码做首适应装箱：
+
+- 对每个候选机柜逐一校验**功率、气流、U 位**三个维度余量；任一负载在任何同热区机柜都放不下，则**整次拒绝**（422 `MAINTENANCE_CAPACITY_INSUFFICIENT`），响应 `error.details` 返回逐负载、逐候选机柜、逐维度的 `required/available` 证据，机柜状态与当前布局保持不变。
+- 全部可放时，单事务内：条件更新机柜为 `maintenance` 并 `version+1`、把承载记录改写到目标机柜、固化一份名为 `MAINT-<机柜>-<id>` 的**新草稿方案**（输入快照含迁移前 `before`、迁移后 `after` 与逐条 `moves`，可通过 `GET /scenarios/:id` 回读）、写入审计。PostgreSQL 用 `SELECT ... FOR UPDATE` 锁定同热区机柜，SQLite 依赖单写者与条件更新。
+- 同一机柜并发发起只有一次能成功：条件 `UPDATE ... WHERE rack_status IN ('available','reserved')` 保证幂等单成功，其余请求得到 409/422 且不产生重复迁移或重复草稿。
+- 审计事件含 `rack.maintenance.start`（前后摘要、迁移条数、草稿名）与 `rack.maintenance.reject`（失败维度证据与原因），均带 request ID。
+
+规划页的“Rack maintenance migration”面板展示机柜当前承载负载，成功后并排展示迁移前后与迁移明细，失败后展示每个无法放置负载的候选机柜容量缺口表。
+
 ## 技术栈
 
 - 后端：Go 1.22、Gin、GORM、JWT、bcrypt、结构化 `slog`
@@ -114,6 +125,8 @@ output/                     验收报告与 Browser 截图
 | `POST /api/v1/auth/login` | 登录并签发 JWT |
 | `GET/POST /api/v1/zones`、`GET/PUT /api/v1/zones/:id` | 热区查询与维护 |
 | `GET/POST /api/v1/racks`、`GET/PUT /api/v1/racks/:id` | 机柜查询与乐观锁更新 |
+| `GET /api/v1/racks/placements/current` | 查看当前机柜实际承载布局 |
+| `POST /api/v1/racks/:id/maintenance` | 发起机柜维护并原子迁移同热区负载 |
 | `GET/POST /api/v1/loads`、`GET/PUT /api/v1/loads/:id` | 设备负载查询与维护 |
 | `POST /api/v1/loads/validate` | 批量校验 ready 输入 |
 | `GET/POST /api/v1/scenarios` | 方案查询与创建 |

@@ -74,6 +74,7 @@ type ScenarioResponse struct {
 	CreatedBy            uint                     `json:"created_by"`
 	ApprovedBy           *uint                    `json:"approved_by"`
 	HasCriticalViolation bool                     `json:"has_critical_violation"`
+	Maintenance          *MaintenanceSnapshot     `json:"maintenance,omitempty"`
 }
 
 type ScenarioComparison struct {
@@ -113,6 +114,12 @@ func DecodeScenario(value model.LayoutScenario) ScenarioResponse {
 	_ = json.Unmarshal([]byte(value.RackAssignmentsJSON), &response.Assignments)
 	_ = json.Unmarshal([]byte(value.ZoneResultsJSON), &response.ZoneResults)
 	_ = json.Unmarshal([]byte(value.ConstraintViolationsJSON), &response.Violations)
+	if raw := value.InputSnapshotJSON; raw != "" && raw != "{}" {
+		var snapshot MaintenanceSnapshot
+		if err := json.Unmarshal([]byte(raw), &snapshot); err == nil && snapshot.Kind == "rack_maintenance" {
+			response.Maintenance = &snapshot
+		}
+	}
 	for _, violation := range response.Violations {
 		if violation.Severity == "critical" {
 			response.HasCriticalViolation = true
