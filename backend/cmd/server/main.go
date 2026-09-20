@@ -50,12 +50,14 @@ func main() {
 	rackRepo := repository.NewRackRepository(db, auditRepo)
 	loadRepo := repository.NewEquipmentLoadRepository(db, auditRepo)
 	scenarioRepo := repository.NewLayoutScenarioRepository(db, auditRepo)
+	maintenanceRepo := repository.NewMaintenanceRepository(db, auditRepo)
 
 	authService := auth.NewService(authRepo, cfg.JWTSecret, cfg.JWTTTL)
 	zoneService := service.NewThermalZoneService(zoneRepo, rackRepo)
 	rackService := service.NewRackService(rackRepo, zoneRepo)
 	loadService := service.NewEquipmentLoadService(loadRepo, zoneRepo)
 	scenarioService := service.NewLayoutScenarioService(scenarioRepo, zoneRepo, rackRepo, loadRepo, planner.NewEngine(cfg.PlannerMaxIterations))
+	maintenanceService := service.NewMaintenanceService(rackRepo, scenarioRepo, loadRepo, zoneRepo, maintenanceRepo)
 
 	engine := gin.New()
 	engine.Use(middleware.RequestID())
@@ -79,7 +81,7 @@ func main() {
 	write := middleware.RBAC(auth.RolePlanner, auth.RoleAdmin)
 	review := middleware.RBAC(auth.RoleReviewer, auth.RoleAdmin)
 	router.RegisterThermalZoneRoutes(protected, handler.NewThermalZoneHandler(zoneService), write)
-	router.RegisterRackRoutes(protected, handler.NewRackHandler(rackService), write)
+	router.RegisterRackRoutes(protected, handler.NewRackHandler(rackService), handler.NewRackMaintenanceHandler(maintenanceService), write)
 	router.RegisterEquipmentLoadRoutes(protected, handler.NewEquipmentLoadHandler(loadService), write)
 	router.RegisterLayoutScenarioRoutes(protected, handler.NewLayoutScenarioHandler(scenarioService), write, review)
 	protected.GET("/audit-events", review, audit.NewHandler(auditRepo).List)

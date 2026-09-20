@@ -36,8 +36,17 @@ docker compose down -v --remove-orphans
 - `/zones`：编辑热区冷量、送风/最大回风温度、邻接权重与区域状态，查看机柜功率边界占比。
 - `/racks`：按热区显示稳定机柜网格，维护唯一位置、功率、气流、U 位和可用状态。
 - `/loads`：维护设备负载、冗余组和偏好热区，对 ready 输入执行批量业务校验。
-- `/planner`：选择负载创建草稿，执行确定性候选布局，查看逐机柜结果、热传播、评分和约束证据。
+- `/planner`：选择负载创建草稿，执行确定性候选布局，查看逐机柜结果、热传播、评分和约束证据；可对可用/预留机柜发起维护迁移闭环。
 - `/audit`：处理待复核方案、比较两个评估版本、检索带 request ID 的审计事件。
+
+### 机柜维护迁移闭环
+
+规划员只能对 `available` 或 `reserved` 机柜发起维护（`POST /api/v1/racks/:id/maintenance`）。系统读取最新已批准方案作为布局基线，把该机柜承载的全部待规划负载在**同一热区**内重新安置到其它可接收负载的机柜（预留机柜可用）。迁移算法是确定性纯函数：按负载功率降序处理，目标机柜选择“迁移后功率/气流/U 位三维峰值利用率最低”的机柜。
+
+- 任一负载在所有同热区候选机柜上功率、气流或 U 位余量不足时**整次拒绝**（422 `MAINTENANCE_MIGRATION_REJECTED`），错误信封 `details.failures` 返回逐负载×逐机柜的容量证据（实际需求/容量上限），机柜状态、版本与原方案均不变；拒绝动作仍写入审计 `rack.maintenance.reject`。
+- 成功后机柜状态原子转为 `maintenance`（版本 +1），迁移结果固化为**可回读的新草稿方案**，其 `input_snapshot` 带 `maintenance` 溯源元数据（源机柜、源批准方案、迁出负载数），并在同一事务写入 `rack.maintenance.start` 与 `layout_scenario.maintenance_draft` 两条审计。
+- 机柜状态使用条件更新（`status IN (available, reserved) AND version = ?`）抢占，同一机柜并发发起只有一次能成功（WAL/Postgres 下有表驱动并发测试保证）；重复/迟到请求得到 422 `RACK_STATUS_NOT_MAINTAINABLE` 或 409 `RACK_MAINTENANCE_CONFLICT`。
+- 规划页机柜卡片提供“Maintain”入口，面板展示迁移前后机柜占用（功率/气流/U 位）、每条负载的迁出→目的机柜，以及失败时的具体原因。
 
 布局算法先按负载对可用机柜的约束紧度排序，再按容量余量、邻接热惩罚、热点惩罚、保留机柜惩罚和偏好奖励评分；评分相同时按机柜编码排序。相同输入快照与算法版本会得到相同结果。无法放置的负载会返回 `LOAD_UNPLACED` 及候选约束证据，不会静默忽略。
 
@@ -75,8 +84,10 @@ output/                     验收报告与 Browser 截图
 
 - 数据库/model：`backend/internal/model/rack.go`
 - 后端共享枚举：`backend/internal/constants/rack.go`
-- DTO/service/handler/router：`backend/internal/dto/rack.go`、`backend/internal/service/rack.go`、`backend/internal/handler/rack.go`、`backend/internal/router/rack.go`
-- 前端 type/API/page：`frontend/src/types/rack.ts`、`frontend/src/app/api/rack.api.ts`、`frontend/src/app/pages/racks.page.ts`
+- 维护迁移算法（`PlanMaintenance`，同热区疏散与容量证据）：`backend/internal/planner/candidate.go`
+- 维护事务（条件抢占机柜+固化草稿+审计）：`backend/internal/repository/rack.go`（`MaintenanceRepository`）
+- DTO/service/handler/router：`backend/internal/dto/rack.go`、`backend/internal/service/rack.go`（`MaintenanceService`）、`backend/internal/handler/rack.go`、`backend/internal/router/rack.go`
+- 前端 type/API/page：`frontend/src/types/rack.ts`、`frontend/src/types/maintenance.ts`、`frontend/src/app/api/rack.api.ts`、`frontend/src/app/api/maintenance.api.ts`、`frontend/src/app/pages/planner.page.ts`、`frontend/src/app/components/common/maintenance-panel.component.ts`
 
 `ScenarioStatus = draft | evaluating | pending_review | approved | archived`
 
@@ -114,6 +125,7 @@ output/                     验收报告与 Browser 截图
 | `POST /api/v1/auth/login` | 登录并签发 JWT |
 | `GET/POST /api/v1/zones`、`GET/PUT /api/v1/zones/:id` | 热区查询与维护 |
 | `GET/POST /api/v1/racks`、`GET/PUT /api/v1/racks/:id` | 机柜查询与乐观锁更新 |
+| `POST /api/v1/racks/:id/maintenance` | 发起机柜维护：同热区迁移负载、转维护中并固化迁移草稿；容量不足整次拒绝 |
 | `GET/POST /api/v1/loads`、`GET/PUT /api/v1/loads/:id` | 设备负载查询与维护 |
 | `POST /api/v1/loads/validate` | 批量校验 ready 输入 |
 | `GET/POST /api/v1/scenarios` | 方案查询与创建 |

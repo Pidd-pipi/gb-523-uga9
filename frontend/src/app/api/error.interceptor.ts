@@ -4,8 +4,13 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { catchError, throwError } from 'rxjs';
 
 interface ErrorEnvelope {
-  error?: {code?: string; message?: string};
+  error?: {code?: string; message?: string; details?: unknown};
   request_id?: string;
+}
+
+export interface StructuredHttpError extends HttpErrorResponse {
+  errorDetails?: unknown;
+  errorCode?: string;
 }
 
 export const errorInterceptor: HttpInterceptorFn = (request, next) => {
@@ -14,6 +19,9 @@ export const errorInterceptor: HttpInterceptorFn = (request, next) => {
     const payload = error.error as ErrorEnvelope | undefined;
     const message = payload?.error?.message ?? (error.status === 0 ? 'Service is unreachable' : `Request failed (${error.status})`);
     snack.open(message, 'Dismiss', {duration: 5500, panelClass: ['error-snack']});
-    return throwError(() => error);
+    const enriched: StructuredHttpError = error;
+    enriched.errorDetails = payload?.error?.details;
+    enriched.errorCode = payload?.error?.code;
+    return throwError(() => enriched);
   }));
 };

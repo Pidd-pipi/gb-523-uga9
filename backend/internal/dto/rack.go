@@ -91,3 +91,80 @@ func NewRack(req CreateRackRequest) (model.Rack, error) {
 		Version:         1,
 	}, nil
 }
+
+type StartRackMaintenanceRequest struct {
+	SourceScenarioID *uint  `json:"source_scenario_id"`
+	Reason           string `json:"reason" binding:"max=500"`
+}
+
+type MaintenanceFailureResponse struct {
+	LoadID   uint    `json:"load_id"`
+	LoadName string  `json:"load_name"`
+	RackID   uint    `json:"rack_id"`
+	RackCode string  `json:"rack_code"`
+	Code     string  `json:"code"`
+	Message  string  `json:"message"`
+	Actual   float64 `json:"actual"`
+	Limit    float64 `json:"limit"`
+}
+
+type MaintenanceMoveResponse struct {
+	LoadID         uint    `json:"load_id"`
+	LoadName       string  `json:"load_name"`
+	FromRackID     uint    `json:"from_rack_id"`
+	FromRackCode   string  `json:"from_rack_code"`
+	ToRackID       uint    `json:"to_rack_id"`
+	ToRackCode     string  `json:"to_rack_code"`
+	ZoneID         uint    `json:"zone_id"`
+	ZoneCode       string  `json:"zone_code"`
+	PowerKW        float64 `json:"power_kw"`
+	HeatKW         float64 `json:"heat_kw"`
+	AirflowCFM     float64 `json:"airflow_cfm"`
+	RackUnits      int     `json:"rack_units"`
+	PlacementScore float64 `json:"placement_score"`
+}
+
+type MaintenanceRackViewResponse struct {
+	RackID           uint    `json:"rack_id"`
+	RackCode         string  `json:"rack_code"`
+	ZoneID           uint    `json:"zone_id"`
+	ZoneCode         string  `json:"zone_code"`
+	RackStatus       string  `json:"rack_status"`
+	BeforePowerKW    float64 `json:"before_power_kw"`
+	AfterPowerKW     float64 `json:"after_power_kw"`
+	BeforeAirflowCFM float64 `json:"before_airflow_cfm"`
+	AfterAirflowCFM  float64 `json:"after_airflow_cfm"`
+	BeforeRackUnits  int     `json:"before_rack_units"`
+	AfterRackUnits   int     `json:"after_rack_units"`
+	PowerLimitKW     float64 `json:"power_limit_kw"`
+	AirflowLimitCFM  float64 `json:"airflow_limit_cfm"`
+	RackUnitLimit    int     `json:"rack_unit_limit"`
+}
+
+type MaintenanceMigrationResponse struct {
+	RackID           uint                          `json:"rack_id"`
+	RackCode         string                        `json:"rack_code"`
+	ZoneID           uint                          `json:"zone_id"`
+	ZoneCode         string                        `json:"zone_code"`
+	SourceScenarioID uint                          `json:"source_scenario_id"`
+	DraftScenarioID  uint                          `json:"draft_scenario_id"`
+	DraftName        string                        `json:"draft_name"`
+	Reason           string                        `json:"reason"`
+	Moves            []MaintenanceMoveResponse     `json:"moves"`
+	RackViews        []MaintenanceRackViewResponse `json:"rack_views"`
+	Before           []RackAssignment              `json:"before"`
+	After            []RackAssignment              `json:"after"`
+	ZoneResults      []ZoneThermalResult           `json:"zone_results"`
+	Violations       []ConstraintViolation         `json:"violations"`
+	Failures         []MaintenanceFailureResponse  `json:"failures"`
+	TotalPowerKW     float64                       `json:"total_power_kw"`
+	PeakTempC        float64                       `json:"peak_temp_c"`
+	Score            float64                       `json:"score"`
+}
+
+func (r StartRackMaintenanceRequest) ValidateBusiness() error {
+	if r.SourceScenarioID != nil && *r.SourceScenarioID == 0 {
+		return errors.New("source scenario id must be positive when provided")
+	}
+	return nil
+}

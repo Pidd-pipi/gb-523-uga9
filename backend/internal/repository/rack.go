@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"datacenter-thermal-capacity-planner/backend/internal/audit"
+	"datacenter-thermal-capacity-planner/backend/internal/constants"
 	"datacenter-thermal-capacity-planner/backend/internal/model"
 	"datacenter-thermal-capacity-planner/backend/internal/web"
 	"gorm.io/gorm"
@@ -103,3 +104,73 @@ func (r *RackRepository) Update(ctx context.Context, rack *model.Rack, expectedV
 		return r.audit.RecordWithDB(ctx, tx, entry)
 	})
 }
+
+// MaintenanceRepository owns the atomic write that claims rack status and
+// persists the migration draft, so concurrent initiations cannot both win.
+type MaintenanceRepository struct {
+	db    *gorm.DB
+	audit *audit.Repository
+}
+
+func NewMaintenanceRepository(db *gorm.DB, auditRepo *audit.Repository) *MaintenanceRepository {
+	return &MaintenanceRepository{db: db, audit: auditRepo}
+}
+
+type MaintenanceDraftInput struct {
+	Name, RackAssignmentsJSON, InputSnapshotJSON, ZoneResultsJSON, ConstraintViolationsJSON string
+	TotalPowerKW, PeakTempC, Score                                                          float64
+	ActorID                                                                                 uint
+}
+
+// ApplyMaintenance conditionally claims the rack, freezes the migration in a
+// new draft and writes both audit events in one transaction.
+func (r *MaintenanceRepository) ApplyMaintenance(ctx context.Context, rack model.Rack, draft MaintenanceDraftInput, rackEntry, scenarioEntry audit.Entry) (model.LayoutScenario, error) {
+	var created model.LayoutScenario
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		claim := tx.Model(&model.Rack{}).Where("id = ? AND version = ? AND rack_status IN ?", rack.ID, rack.Version,
+			[]constants.RackStatus{constants.RackAvailable, constants.RackReserved}).
+			Updates(map[string]any{"rack_status": constants.RackMaintenance, "version": gorm.Expr("version + 1")})
+		if claim.Error != nil {
+			return fmt.Errorf("claim rack for maintenance: %w", claim.Error)
+		}
+		if claim.RowsAffected == 0 {
+			return web.Conflict("RACK_MAINTENANCE_CONFLICT", "rack maintenance was already started or the rack changed", nil)
+		}
+		scenario := model.LayoutScenario{
+			Name: draft.Name, ScenarioStatus: constants.ScenarioDraft, RackAssignmentsJSON: draft.RackAssignmentsJSON,
+			InputSnapshotJSON: draft.InputSnapshotJSON, ZoneResultsJSON: draft.ZoneResultsJSON,
+			ConstraintViolationsJSON: draft.ConstraintViolationsJSON, TotalPowerKW: draft.TotalPowerKW, PeakTempC: draft.PeakTempC,
+			Score: draft.Score, AlgorithmVersion: rackMaintenanceAlgorithmVersion, Version: 1, CreatedBy: draft.ActorID,
+		}
+		if err := tx.Create(&scenario).Error; err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) {
+				return web.Conflict("SCENARIO_NAME_EXISTS", "maintenance draft name already exists", err)
+			}
+			return fmt.Errorf("create maintenance draft scenario: %w", err)
+		}
+		rackEntry.EntityID = rack.ID
+		if err := r.audit.RecordWithDB(ctx, tx, rackEntry); err != nil {
+			return err
+		}
+		scenarioEntry.EntityID = scenario.ID
+		if err := r.audit.RecordWithDB(ctx, tx, scenarioEntry); err != nil {
+			return err
+		}
+		created = scenario
+		return nil
+	})
+	if err != nil {
+		return model.LayoutScenario{}, err
+	}
+	return created, nil
+}
+
+// RecordRejection audits a rejected initiation; no rack/scenario row changes.
+func (r *MaintenanceRepository) RecordRejection(ctx context.Context, rack model.Rack, entry audit.Entry) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		entry.EntityID = rack.ID
+		return r.audit.RecordWithDB(ctx, tx, entry)
+	})
+}
+
+const rackMaintenanceAlgorithmVersion = "thermal-v1"

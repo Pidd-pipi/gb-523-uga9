@@ -5,10 +5,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRackRoutes(api *gin.RouterGroup, h *handler.RackHandler, write gin.HandlerFunc) {
+func RegisterRackRoutes(api *gin.RouterGroup, h *handler.RackHandler, mh *handler.RackMaintenanceHandler, write gin.HandlerFunc) {
 	racks := api.Group("/racks")
 	racks.GET("", h.List)
 	racks.GET("/:id", h.Get)
 	racks.POST("", write, h.Create)
 	racks.PUT("/:id", write, h.Update)
+	racks.POST("/:id/maintenance", write, mh.Start)
 }

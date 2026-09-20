@@ -9,6 +9,22 @@ import (
 	"datacenter-thermal-capacity-planner/backend/internal/model"
 )
 
+type ScenarioSnapshot struct {
+	LoadIDs          []uint                   `json:"load_ids"`
+	AlgorithmVersion string                   `json:"algorithm_version"`
+	Maintenance      *MaintenanceSnapshotMeta `json:"maintenance,omitempty"`
+}
+
+// MaintenanceSnapshotMeta marks a draft created by the rack maintenance
+// migration closed loop so it can be read back and audited.
+type MaintenanceSnapshotMeta struct {
+	RackID             uint   `json:"rack_id"`
+	RackCode           string `json:"rack_code"`
+	SourceScenarioID   uint   `json:"source_scenario_id"`
+	SourceScenarioName string `json:"source_scenario_name"`
+	EvacuatedLoadCount int    `json:"evacuated_load_count"`
+}
+
 type CreateLayoutScenarioRequest struct {
 	Name    string `json:"name" binding:"required,min=3,max=120"`
 	LoadIDs []uint `json:"load_ids" binding:"required,min=1"`
@@ -74,6 +90,7 @@ type ScenarioResponse struct {
 	CreatedBy            uint                     `json:"created_by"`
 	ApprovedBy           *uint                    `json:"approved_by"`
 	HasCriticalViolation bool                     `json:"has_critical_violation"`
+	Maintenance          *MaintenanceSnapshotMeta `json:"maintenance,omitempty"`
 }
 
 type ScenarioComparison struct {
@@ -113,6 +130,10 @@ func DecodeScenario(value model.LayoutScenario) ScenarioResponse {
 	_ = json.Unmarshal([]byte(value.RackAssignmentsJSON), &response.Assignments)
 	_ = json.Unmarshal([]byte(value.ZoneResultsJSON), &response.ZoneResults)
 	_ = json.Unmarshal([]byte(value.ConstraintViolationsJSON), &response.Violations)
+	var snapshot ScenarioSnapshot
+	if err := json.Unmarshal([]byte(value.InputSnapshotJSON), &snapshot); err == nil {
+		response.Maintenance = snapshot.Maintenance
+	}
 	for _, violation := range response.Violations {
 		if violation.Severity == "critical" {
 			response.HasCriticalViolation = true

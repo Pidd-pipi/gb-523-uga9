@@ -35,6 +35,14 @@ export interface ZoneThermalResult {
   cooling_margin_kw: number;
 }
 
+export interface MaintenanceSnapshotMeta {
+  rack_id: number;
+  rack_code: string;
+  source_scenario_id: number;
+  source_scenario_name: string;
+  evacuated_load_count: number;
+}
+
 export interface LayoutScenario {
   id: number;
   name: string;
@@ -50,6 +58,7 @@ export interface LayoutScenario {
   created_by: number;
   approved_by: number | null;
   has_critical_violation: boolean;
+  maintenance?: MaintenanceSnapshotMeta;
 }
 
 export interface ScenarioComparison {

@@ -66,3 +66,33 @@ func (h *RackHandler) Update(c *gin.Context) {
 	}
 	web.OK(c, item)
 }
+
+type RackMaintenanceHandler struct {
+	service *service.MaintenanceService
+}
+
+func NewRackMaintenanceHandler(service *service.MaintenanceService) *RackMaintenanceHandler {
+	return &RackMaintenanceHandler{service: service}
+}
+
+// Start handles POST /racks/:id/maintenance. On success the rack is in
+// maintenance and the migration is frozen as a new draft scenario; on capacity
+// rejection the 422 envelope carries structured per-load failure evidence.
+func (h *RackMaintenanceHandler) Start(c *gin.Context) {
+	id, ok := web.ParamID(c)
+	if !ok {
+		return
+	}
+	var req dto.StartRackMaintenanceRequest
+	if c.Request.ContentLength > 0 {
+		if !web.BindJSON(c, &req) {
+			return
+		}
+	}
+	result, err := h.service.Start(c.Request.Context(), id, req, auditFrom(c))
+	if err != nil {
+		web.Fail(c, err)
+		return
+	}
+	web.Created(c, result)
+}

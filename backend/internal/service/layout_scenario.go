@@ -23,10 +23,7 @@ type LayoutScenarioService struct {
 	engine    *planner.Engine
 }
 
-type scenarioInputSnapshot struct {
-	LoadIDs          []uint `json:"load_ids"`
-	AlgorithmVersion string `json:"algorithm_version"`
-}
+type scenarioInputSnapshot = dto.ScenarioSnapshot
 
 func NewLayoutScenarioService(scenarios *repository.LayoutScenarioRepository, zones *repository.ThermalZoneRepository, racks *repository.RackRepository, loads *repository.EquipmentLoadRepository, engine *planner.Engine) *LayoutScenarioService {
 	return &LayoutScenarioService{scenarios: scenarios, zones: zones, racks: racks, loads: loads, engine: engine}
@@ -125,12 +122,13 @@ func (s *LayoutScenarioService) Evaluate(ctx context.Context, id, version uint, 
 		return dto.ScenarioResponse{}, web.Internal(fmt.Errorf("encode violations: %w", err))
 	}
 	fullSnapshot, err := json.Marshal(struct {
-		LoadIDs          []uint                `json:"load_ids"`
-		AlgorithmVersion string                `json:"algorithm_version"`
-		Zones            []model.ThermalZone   `json:"zones"`
-		Racks            []model.Rack          `json:"racks"`
-		Loads            []model.EquipmentLoad `json:"loads"`
-	}{LoadIDs: input.LoadIDs, AlgorithmVersion: planner.AlgorithmVersion, Zones: zones, Racks: racks, Loads: loads})
+		LoadIDs          []uint                       `json:"load_ids"`
+		AlgorithmVersion string                       `json:"algorithm_version"`
+		Maintenance      *dto.MaintenanceSnapshotMeta `json:"maintenance,omitempty"`
+		Zones            []model.ThermalZone          `json:"zones"`
+		Racks            []model.Rack                 `json:"racks"`
+		Loads            []model.EquipmentLoad        `json:"loads"`
+	}{LoadIDs: input.LoadIDs, AlgorithmVersion: planner.AlgorithmVersion, Maintenance: input.Maintenance, Zones: zones, Racks: racks, Loads: loads})
 	if err != nil {
 		return dto.ScenarioResponse{}, web.Internal(fmt.Errorf("encode evaluation snapshot: %w", err))
 	}

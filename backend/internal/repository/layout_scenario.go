@@ -50,6 +50,24 @@ func (r *LayoutScenarioRepository) Get(ctx context.Context, id uint) (model.Layo
 	return scenario, nil
 }
 
+// LatestApproved returns the most recently approved (and non-archived)
+// scenario. Approved scenarios only transition to archived, so the newest
+// approved row is the current committed layout baseline.
+func (r *LayoutScenarioRepository) LatestApproved(ctx context.Context, id *uint) (model.LayoutScenario, error) {
+	var scenario model.LayoutScenario
+	query := r.db.WithContext(ctx).Where("scenario_status = ?", constants.ScenarioApproved).Order("updated_at DESC, id DESC")
+	if id != nil && *id > 0 {
+		query = r.db.WithContext(ctx).Where("id = ? AND scenario_status = ?", *id, constants.ScenarioApproved)
+	}
+	if err := query.First(&scenario).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.LayoutScenario{}, gorm.ErrRecordNotFound
+		}
+		return model.LayoutScenario{}, fmt.Errorf("find approved layout scenario: %w", err)
+	}
+	return scenario, nil
+}
+
 func (r *LayoutScenarioRepository) Create(ctx context.Context, scenario *model.LayoutScenario, entry audit.Entry) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(scenario).Error; err != nil {
